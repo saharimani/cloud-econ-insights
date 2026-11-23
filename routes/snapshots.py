@@ -1,10 +1,17 @@
 """User-scoped economic snapshot API."""
+import re
+
 from flask import Blueprint, g, jsonify, request
 
+import external_api
 from auth import require_api_key
 from models import EconSnapshot, Indicator, db
 
 snapshots_bp = Blueprint("snapshots", __name__)
+
+# World Bank indicator codes look like NY.GDP.MKTP.CD; country codes are ISO-2/ISO-3
+INDICATOR_CODE = re.compile(r"^[A-Za-z0-9._]{1,50}$")
+COUNTRY_CODE = re.compile(r"^[A-Za-z]{2,3}$")
 
 
 def snapshot_to_dict(snapshot):
@@ -85,6 +92,54 @@ def create_snapshot():
         country=country.strip().upper(),
         year=year,
         value=value,
+    )
+    db.session.add(snapshot)
+    db.session.commit()
+    return jsonify(snapshot_to_dict(snapshot)), 201
+
+
+@snapshots_bp.route("/fetch", methods=["POST"])
+@require_api_key
+def fetch_snapshot():
+    """Fetch a live value from the World Bank API for one of the user's indicators and store it."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+
+    indicator_id = data.get("indicator_id")
+    country = data.get("country")
+    year = data.get("year")
+
+    try:
+        if isinstance(indicator_id, bool) or isinstance(year, bool):
+            raise ValueError
+        indicator_id = int(indicator_id)
+        year = int(year)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid indicator_id or year"}), 400
+
+    if not isinstance(country, str) or not COUNTRY_CODE.match(country.strip()):
+        return jsonify({"error": "Country must be a 2- or 3-letter code"}), 400
+    country = country.strip().upper()
+
+    indicator = Indicator.query.filter_by(
+        id=indicator_id, user_id=g.current_user.id
+    ).first()
+    if indicator is None:
+        return jsonify({"error": "Indicator not found"}), 404
+    if not INDICATOR_CODE.match(indicator.code):
+        return jsonify({"error": "Indicator code is not a valid World Bank code"}), 400
+
+    value = external_api.fetch_indicator_value(country, indicator.code, year)
+    if value is None:
+        return jsonify({"error": "No value available from the World Bank API"}), 502
+
+    snapshot = EconSnapshot(
+        indicator_id=indicator.id,
+        user_id=g.current_user.id,
+        country=country,
+        year=year,
+        value=float(value),
     )
     db.session.add(snapshot)
     db.session.commit()

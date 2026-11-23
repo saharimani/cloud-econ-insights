@@ -1,67 +1,96 @@
 # Cloud Economics Insights API
 
-An **academic Python/Flask REST API prototype** for retrieving and storing economic indicators. Developed for the ECS781P Cloud Computing module at Queen Mary University of London.
+[![tests](https://github.com/SHR-IM/cloud-econ-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/SHR-IM/cloud-econ-insights/actions/workflows/tests.yml)
 
-This repository demonstrates a small backend service, rather than a production deployment. It integrates with the World Bank API, uses Flask-SQLAlchemy for relational persistence, and supports per-user API keys.
+A Flask REST API for saving economic indicators and pulling their values from the **World Bank Open Data API**. Users register, get an API key, and can only see their own data.
 
-## Stack
+This is a three-person group project for **ECS781P Cloud Computing** at Queen Mary University of London (December 2025). It is a coursework prototype, not a production service.
 
-Python 3.11, Flask, Flask-SQLAlchemy, SQLite for local development (PostgreSQL may be configured using DATABASE_URL), requests, Docker and Gunicorn.
+`Python 3.11` · `Flask` · `Flask-SQLAlchemy` · `SQLite / PostgreSQL` · `requests` · `Docker` · `Gunicorn` · `Google Cloud`
 
-## Capabilities
+## Endpoints
 
-- Register and log in via POST /auth/register and POST /auth/login.
-- Create and list your own economic indicators via /indicators/.
-- Create, list, retrieve, update and delete your own economic snapshots via /snapshots/.
-- Explore integration code for querying World Bank economic data in external_api.py.
-- API key authentication using the X-API-KEY request header.
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/auth/register` | Create an account; returns an API key (shown once) |
+| POST | `/auth/login` | Issue a new API key; the previous one stops working |
+| GET / POST | `/indicators/` | List or create your indicators (e.g. `NY.GDP.MKTP.KD.ZG`, GDP growth) |
+| GET / POST | `/snapshots/` | List (filter by `indicator_id`, `country`, `year`) or create a snapshot by hand |
+| **POST** | **`/snapshots/fetch`** | **Fetch the live value from the World Bank for one of your indicators, then store it** |
+| GET / PUT / DELETE | `/snapshots/<id>` | Read, update or delete one of your snapshots |
 
-**Important scope note:** The World Bank fetching helper exists in the codebase; these routes do not automatically sync data from that service. This is a learning project, not a live cloud service or a security-audited production API.
+Every endpoint except `/auth/*` requires the `X-API-KEY` header.
 
-## Run locally
+## Example
 
-1. Create and activate a Python 3.11+ virtual environment.
-2. Run: pip install -r requirements.txt
-3. Start the server: python app.py
-4. Visit http://127.0.0.1:8080/
+```bash
+# register and keep the key
+curl -s -X POST localhost:8080/auth/register -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"change-this-password"}'
 
-The default database is a local SQLite file; set DATABASE_URL for a different database.
+# save an indicator
+curl -s -X POST localhost:8080/indicators/ -H "X-API-KEY: $KEY" -H "Content-Type: application/json" \
+  -d '{"code":"NY.GDP.MKTP.KD.ZG","name":"GDP growth (annual %)"}'
 
-Example registration:
+# pull the UK's 2022 value from the World Bank and store it
+curl -s -X POST localhost:8080/snapshots/fetch -H "X-API-KEY: $KEY" -H "Content-Type: application/json" \
+  -d '{"indicator_id":1,"country":"GB","year":2022}'
+```
 
-    curl -X POST http://127.0.0.1:8080/auth/register \
-      -H "Content-Type: application/json" \
-      -d '{"email":"demo@example.com","password":"change-this-password"}'
+## Security
 
-The response contains a newly issued API key. Provide that value in an X-API-KEY header to use protected endpoints. Logging in issues a **new** API key and revokes the previous one.
+- Passwords are hashed with Werkzeug.
+- API keys are 256-bit random tokens. Only their SHA-256 hash is stored, and logging in rotates the key.
+- Every query is scoped to the authenticated user. Another user's record returns 404, so the API doesn't reveal which records exist.
+- Input is validated before it reaches the database or the World Bank. Country and indicator codes are checked against strict patterns because they become part of the outbound URL.
+- Debug mode is off by default, and there is no hard-coded secret key.
 
-## Test
+## Tests
 
-    python -m unittest discover -s tests -v
+```bash
+pip install -r requirements.txt
+python -m unittest discover -s tests -v
+```
 
-Tests check input validation, API key hashing and rotation, and data isolation between two users. These are regression tests, not a penetration test or assurance of production readiness.
+The tests run on every push (GitHub Actions) and cover:
+- **Authentication:** input validation, hashed and rotated keys.
+- **Isolation between users:** one user can't read, edit, delete or fetch against another user's records.
+- **World Bank integration:** the client parses the real response shape and handles empty data, errors and timeouts. The fetch endpoint stores the value it gets back, returns 502 when there is no value, and rejects unsafe codes before making any request. The HTTP call is stubbed, so the tests never reach the internet.
 
-## Security and repository hygiene
+## Running it
 
-- Passwords use Werkzeug's password hashing utilities.
-- Newly issued API keys are high-entropy random values, stored only as SHA-256 hashes.
-- Protected queries are scoped to the authenticated user.
-- Local databases, virtual environments and Python caches are excluded by .gitignore and .dockerignore.
-- The former repository version committed a database and development files. **Removing files from the current branch does not erase them from Git history.** If real credentials or private data were present, revoke/rotate affected credentials and carefully review the history before publicizing this repository further.
-- Existing plaintext API keys in a previously created database cannot authenticate using the new code. For a disposable coursework database, recreate it; otherwise arrange a migration and key reset. Do not discard valuable user data.
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python app.py                     # http://127.0.0.1:8080
+```
 
-## Limitations and next steps
+The app uses a local SQLite file by default. Set `DATABASE_URL` to use PostgreSQL. The `Dockerfile` serves the app with Gunicorn on `$PORT`, which is how it runs on Cloud Run.
 
-For a real deployment, add database migrations, better API input schemas, rate limits, secret management, TLS termination, dependency pinning/scanning, CI, and integration tests against the deployed environment. The project does not claim these production controls already exist.
+## Team
 
-## Repository layout
+Contributions as recorded in the commit history:
 
-- app.py and config.py: Flask application factory and configuration
-- models.py: users, economic indicators and historical snapshots
-- auth.py: API-key handling
-- routes/: HTTP endpoints
-- external_api.py: World Bank request helper
-- tests/: local regression tests
-- Dockerfile: container build for the academic service
+- **Sahar Imani** ([SHR-IM](https://github.com/SHR-IM)): original application structure (Flask app factory, configuration, SQLAlchemy models, authentication helpers, route blueprints) and the World Bank API client. Later work: the security hardening, the `/snapshots/fetch` endpoint and the test suite.
+- **Sara Alrassi** ([Sara-Alr](https://github.com/Sara-Alr)): authentication, indicator and snapshot endpoint development.
+- **Uhunoma Osemwengie** ([uhunomaosem](https://github.com/uhunomaosem)): Docker containerisation and deployment on Google Cloud.
 
-*Portfolio update, November 2026: security hardening and presentation cleanup of the original university coursework.*
+## Limitations
+
+- **No database migrations.** Tables are created on start-up.
+- **No rate limiting, and the World Bank call is synchronous.** A slow upstream response holds a worker for up to 25 s.
+- **Only Cloud Run's own HTTPS.** There is no separate secret manager or TLS setup.
+- **No integration tests against a deployed instance.**
+
+## Layout
+
+```
+app.py              application factory
+config.py           configuration from environment variables
+models.py           User, Indicator, EconSnapshot
+auth.py             password hashing, API-key issue/rotation, require_api_key decorator
+external_api.py     World Bank API client
+routes/             auth, indicators and snapshots blueprints
+tests/              security and World Bank tests
+Dockerfile          Gunicorn container for Cloud Run
+```

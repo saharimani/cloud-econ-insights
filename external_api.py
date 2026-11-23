@@ -1,11 +1,17 @@
+"""Client for the World Bank Open Data API (v2)."""
+import logging
+
 import requests
 
 BASE_URL = "https://api.worldbank.org/v2"
 
+logger = logging.getLogger(__name__)
+
+
 def fetch_indicator_value(country_code, indicator_code, year):
     """
     Fetches value of an indicator for a given country and year.
-    Handles slow API responses gracefully.
+    Returns None if the API is slow, unavailable, or has no value for that year.
     """
 
     url = f"{BASE_URL}/country/{country_code}/indicator/{indicator_code}"
@@ -18,14 +24,14 @@ def fetch_indicator_value(country_code, indicator_code, year):
     try:
         resp = requests.get(url, params=params, timeout=25)
     except requests.exceptions.Timeout:
-        print("World Bank API timeout")
+        logger.warning("World Bank API timeout")
         return None
-    except Exception as e:
-        print(f"API error: {e}")
+    except requests.exceptions.RequestException as e:
+        logger.warning("World Bank API error: %s", e)
         return None
 
     if not resp.ok:
-        print(f"Bad response: {resp.status_code}")
+        logger.warning("World Bank API bad response: %s", resp.status_code)
         return None
 
     try:
@@ -33,8 +39,7 @@ def fetch_indicator_value(country_code, indicator_code, year):
         records = data[1]       # second element contains the data array
         if not records:
             return None
-        value = records[0].get("value")
-        return value
-    except Exception as e:
-        print(f"JSON parse error: {e}")
+        return records[0].get("value")
+    except (ValueError, IndexError, KeyError, TypeError, AttributeError) as e:
+        logger.warning("World Bank API parse error: %s", e)
         return None
