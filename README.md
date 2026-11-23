@@ -1,6 +1,6 @@
 # Cloud Economics Insights API
 
-[![tests](https://github.com/SHR-IM/cloud-econ-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/SHR-IM/cloud-econ-insights/actions/workflows/tests.yml)
+[![tests](https://github.com/saharimani/cloud-econ-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/saharimani/cloud-econ-insights/actions/workflows/tests.yml)
 
 A Flask REST API for saving economic indicators and pulling their values from the **World Bank Open Data API**. Users register, get an API key, and can only see their own data.
 
@@ -71,7 +71,7 @@ The app uses a local SQLite file by default. Set `DATABASE_URL` to use PostgreSQ
 
 Contributions as recorded in the commit history:
 
-- **Sahar Imani** ([SHR-IM](https://github.com/SHR-IM)): original application structure (Flask app factory, configuration, SQLAlchemy models, authentication helpers, route blueprints) and the World Bank API client. Later work: the security hardening, the `/snapshots/fetch` endpoint and the test suite.
+- **Sahar Imani** ([saharimani](https://github.com/saharimani)): original application structure (Flask app factory, configuration, SQLAlchemy models, authentication helpers, route blueprints) and the World Bank API client. Later work: the security hardening, the `/snapshots/fetch` endpoint and the test suite.
 - **Sara Alrassi** ([Sara-Alr](https://github.com/Sara-Alr)): authentication, indicator and snapshot endpoint development.
 - **Uhunoma Osemwengie** ([uhunomaosem](https://github.com/uhunomaosem)): Docker containerisation and deployment on Google Cloud.
 
